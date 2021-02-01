@@ -62,7 +62,6 @@ proc adi_sim_generate {project_name } {
   set_property verilog_define $adi_sim_defines [get_filesets sim_1]
 
   set_property -name {xsim.simulate.runtime} -value {} -objects [get_filesets sim_1]
-  set_property -name {xsim.elaborate.debug_level} -value {all} -objects [get_filesets sim_1]
 
   # Show all Xilinx primitives e.g GTYE4_COMMON
   set_property -name {xsim.elaborate.debug_level} -value {all} -objects [get_filesets sim_1]
