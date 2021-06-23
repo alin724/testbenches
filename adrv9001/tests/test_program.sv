@@ -50,7 +50,9 @@ import adi_regmap_jesd_tx_pkg::*;
 import adi_regmap_jesd_rx_pkg::*;
 
 `define RX1_DMA      32'h44A3_0000
+`define RX2_DMA      32'h44A4_0000
 `define TX1_DMA      32'h44A5_0000
+`define TX2_DMA      32'h44A6_0000
 `define AXI_ADRV9001 32'h44A0_0000
 `define DDR_BASE     32'h8000_0000
 
@@ -61,11 +63,11 @@ import adi_regmap_jesd_rx_pkg::*;
 
 program test_program;
 
-  parameter CMOS_LVDS_N = `CMOS_LVDS_N;
+  parameter CMOS_LVDS_N = 1;
   parameter SDR_DDR_N = 1;
   parameter SINGLE_LANE = 1;
-  parameter R1_MODE = 0;
-  parameter USE_RX_CLK_FOR_TX = `USE_RX_CLK_FOR_TX;
+  parameter SYNTH_R1_MODE = 0;
+  parameter USE_RX_CLK_FOR_TX = 0;
   parameter DDS_DISABLE = 0;
   parameter IQCORRECTION_DISABLE = 1;
 
@@ -78,10 +80,11 @@ program test_program;
 
   parameter RX1_COMMON  = BASE + 'h00_00 * 4;
   parameter RX1_CHANNEL = BASE;
+
   parameter RX1_DLY = BASE + 'h02_00 * 4;
 
   parameter RX2_COMMON  = BASE + 'h04_00 * 4;
-  parameter RX2_CHANNEL = BASE + 'h05_00 * 4;
+  parameter RX2_CHANNEL = BASE;
 
   parameter RX2_DLY = BASE + 'h06_00 * 4;
 
@@ -89,13 +92,14 @@ program test_program;
   parameter TX1_CHANNEL = BASE + 32'h0000_2000;
 
   parameter TX2_COMMON  = BASE + 'h10_00 * 4;
-  parameter TX2_CHANNEL = BASE + 'h11_00 * 4;
+  parameter TX2_CHANNEL = BASE + 32'h0000_4000;
 
   parameter TDD1 = BASE + 'h12_00 * 4;
   parameter TDD2 = BASE + 'h13_00 * 4;
 
   test_harness_env env;
   bit [31:0] val;
+  int R1_MODE = 0;
 
   // --------------------------
   // Wrapper function for AXI read verify
@@ -161,14 +165,26 @@ program test_program;
     `TH.`SYS_RST.inst.IF.deassert_reset;
 
     #1us;
+
     sanity_test;
+
+    // R2T2 tests
+    R1_MODE = 0;
 
     pn_test(`NIBBLE_RAMP);
     pn_test(`FULL_RAMP);
     pn_test(`PN7);
     pn_test(`PN15);
 
+    dds_test;
+
     dma_test;
+
+    // independent R1T1 tests
+    R1_MODE = 1;
+
+    dma_test_ch2;
+
     `INFO(("Test Done"));
 
   end
@@ -178,7 +194,7 @@ program test_program;
   // --------------------------
   task sanity_test;
   begin
-
+     
     //check ADC VERSION
     #100 axi_read_v (RX1_COMMON + GetAddrs(REG_VERSION),
                     `SET_REG_VERSION_VERSION('h000a0162));
@@ -195,48 +211,56 @@ program test_program;
                                                (R1_MODE * 16) +
                                                (DDS_DISABLE * 64) +
                                                (IQCORRECTION_DISABLE * 1));
-    #100 axi_read_v (TX2_COMMON + GetAddrs(REG_CONFIG), (USE_RX_CLK_FOR_TX * 1024) +
+     #100 axi_read_v (TX2_COMMON + GetAddrs(REG_CONFIG), (USE_RX_CLK_FOR_TX * 1024) +
                                                (CMOS_LVDS_N * 128) +
                                                (1 * 16) +
                                                (DDS_DISABLE * 64) +
                                                (IQCORRECTION_DISABLE * 1));
-    end
+     // Check dummy constant regs
+     #100 axi_read_v (RX1_COMMON + 32'h000008C, 'h8);
+     #100 axi_read_v (RX2_COMMON + 32'h000008C, 'h8);
+  end
   endtask
 
   // --------------------------
   // Setup link
   // --------------------------
-  task link_setup;
+  task link_setup(bit rx1_en = 1,
+                  bit rx2_en = 1,
+                  bit tx1_en = 1,
+                  bit tx2_en = 1);
   begin
     // Configure Rx interface
-    axi_write (RX1_COMMON + GetAddrs(ADC_COMMON_REG_CNTRL),
-              `SET_ADC_COMMON_REG_CNTRL_R1_MODE(1) | (SDR_DDR_N << 16) | (SINGLE_LANE << 8));
-    axi_write (RX2_COMMON + GetAddrs(ADC_COMMON_REG_CNTRL),
-              `SET_ADC_COMMON_REG_CNTRL_R1_MODE(1) | (SDR_DDR_N << 16) | (SINGLE_LANE << 8));
+    #100 axi_write (RX1_COMMON + GetAddrs(ADC_COMMON_REG_CNTRL),
+                   `SET_ADC_COMMON_REG_CNTRL_R1_MODE(R1_MODE) | (SDR_DDR_N << 16) | (SINGLE_LANE << 8));
+    #100 axi_write (RX2_COMMON + GetAddrs(ADC_COMMON_REG_CNTRL),
+                   `SET_ADC_COMMON_REG_CNTRL_R1_MODE(R1_MODE) | (SDR_DDR_N << 16) | (SINGLE_LANE << 8));
     // Configure Tx interface
-    axi_write (TX1_COMMON + GetAddrs(DAC_COMMON_REG_CNTRL_2),
-              `SET_DAC_COMMON_REG_CNTRL_2_R1_MODE(1) | (SDR_DDR_N << 16) | (SINGLE_LANE << 8));
-    axi_write (TX2_COMMON + GetAddrs(DAC_COMMON_REG_CNTRL_2),
-              `SET_DAC_COMMON_REG_CNTRL_2_R1_MODE(1) | (SDR_DDR_N << 16) | (SINGLE_LANE << 8));
-    axi_write (TX1_COMMON + GetAddrs(DAC_COMMON_REG_RATECNTRL),
-              `SET_DAC_COMMON_REG_RATECNTRL_RATE(rate-1));
-    axi_write (TX2_COMMON + GetAddrs(DAC_COMMON_REG_RATECNTRL),
-              `SET_DAC_COMMON_REG_RATECNTRL_RATE(rate-1));
+    #100 axi_write (TX1_COMMON + GetAddrs(DAC_COMMON_REG_CNTRL_2),
+                   `SET_DAC_COMMON_REG_CNTRL_2_R1_MODE(R1_MODE) | (SDR_DDR_N << 16) | (SINGLE_LANE << 8));
+    #100 axi_write (TX2_COMMON + GetAddrs(DAC_COMMON_REG_CNTRL_2),
+                   `SET_DAC_COMMON_REG_CNTRL_2_R1_MODE(R1_MODE) | (SDR_DDR_N << 16) | (SINGLE_LANE << 8));
+    #100 axi_write (TX1_COMMON + GetAddrs(DAC_COMMON_REG_RATECNTRL),
+                   `SET_DAC_COMMON_REG_RATECNTRL_RATE(rate-1));
+    #100 axi_write (TX2_COMMON + GetAddrs(DAC_COMMON_REG_RATECNTRL),
+                   `SET_DAC_COMMON_REG_RATECNTRL_RATE(rate-1));
 
     // pull out TX of reset
-    axi_write (TX1_COMMON + GetAddrs(DAC_COMMON_REG_RSTN),
-              `SET_DAC_COMMON_REG_RSTN_RSTN(1));
-    axi_write (TX2_COMMON + GetAddrs(DAC_COMMON_REG_RSTN),
-              `SET_DAC_COMMON_REG_RSTN_RSTN(1));
-
+    #100 axi_write (TX1_COMMON + GetAddrs(DAC_COMMON_REG_RSTN),
+                   `SET_DAC_COMMON_REG_RSTN_RSTN(tx1_en)|
+                   `SET_DAC_COMMON_REG_RSTN_MMCM_RSTN(tx1_en));
+    #100 axi_write (TX2_COMMON + GetAddrs(DAC_COMMON_REG_RSTN),
+                   `SET_DAC_COMMON_REG_RSTN_RSTN(tx2_en)|
+                   `SET_DAC_COMMON_REG_RSTN_MMCM_RSTN(tx2_en));
     gen_mssi_sync;
 
     // pull out RX of reset
-    axi_write (RX1_COMMON + GetAddrs(ADC_COMMON_REG_RSTN),
-              `SET_ADC_COMMON_REG_RSTN_RSTN(1));
-    axi_write (RX2_COMMON + GetAddrs(ADC_COMMON_REG_RSTN),
-              `SET_ADC_COMMON_REG_RSTN_RSTN(1));
-
+    #100 axi_write (RX1_COMMON + GetAddrs(ADC_COMMON_REG_RSTN),
+                   `SET_ADC_COMMON_REG_RSTN_RSTN(rx1_en)|
+                   `SET_DAC_COMMON_REG_RSTN_MMCM_RSTN(rx1_en));
+    #100 axi_write (RX2_COMMON + GetAddrs(ADC_COMMON_REG_RSTN),
+                   `SET_ADC_COMMON_REG_RSTN_RSTN(rx2_en)|
+                   `SET_ADC_COMMON_REG_RSTN_MMCM_RSTN(rx2_en)); 
   end
   endtask
 
@@ -245,17 +269,14 @@ program test_program;
   // --------------------------
   task link_down;
   begin
-    // put RX in reset
-    axi_write (RX1_COMMON + GetAddrs(ADC_COMMON_REG_RSTN), 
-              `SET_ADC_COMMON_REG_RSTN_RSTN(0));
-    axi_write (RX2_COMMON + GetAddrs(ADC_COMMON_REG_RSTN),
-              `SET_ADC_COMMON_REG_RSTN_RSTN(0));
-    // put TX in reset
-    axi_write (TX1_COMMON + GetAddrs(DAC_COMMON_REG_RSTN),
-              `SET_DAC_COMMON_REG_RSTN_RSTN(0));
-    axi_write (TX2_COMMON + GetAddrs(DAC_COMMON_REG_RSTN),
-              `SET_DAC_COMMON_REG_RSTN_RSTN(0));
-
+    #100 axi_write (TX1_COMMON + GetAddrs(DAC_COMMON_REG_RSTN),
+                   `SET_DAC_COMMON_REG_RSTN_RSTN(0));
+    #100 axi_write (TX2_COMMON + GetAddrs(DAC_COMMON_REG_RSTN),
+                   `SET_DAC_COMMON_REG_RSTN_RSTN(0));
+    #100 axi_write (RX1_COMMON + GetAddrs(ADC_COMMON_REG_RSTN),
+                   `SET_ADC_COMMON_REG_RSTN_RSTN(0));
+    #100 axi_write (RX2_COMMON + GetAddrs(ADC_COMMON_REG_RSTN),
+                   `SET_ADC_COMMON_REG_RSTN_RSTN(0));
     #1000;
   end
   endtask
@@ -283,56 +304,298 @@ program test_program;
     link_setup;
 
     // enable test data for TX1
-    axi_write (TX1_CHANNEL + CH0 + GetAddrs(DAC_CHANNEL_REG_CHAN_CNTRL_7),
-              `SET_DAC_CHANNEL_REG_CHAN_CNTRL_7_DAC_DDS_SEL(tx_pattern_map[pattern]));
-    axi_write (TX1_CHANNEL + CH1 + GetAddrs(DAC_CHANNEL_REG_CHAN_CNTRL_7),
-              `SET_DAC_CHANNEL_REG_CHAN_CNTRL_7_DAC_DDS_SEL(tx_pattern_map[pattern]));
-    axi_write (TX1_CHANNEL + CH2 + GetAddrs(DAC_CHANNEL_REG_CHAN_CNTRL_7),
-              `SET_DAC_CHANNEL_REG_CHAN_CNTRL_7_DAC_DDS_SEL(tx_pattern_map[pattern]));
-    axi_write (TX1_CHANNEL + CH3 + GetAddrs(DAC_CHANNEL_REG_CHAN_CNTRL_7),
-              `SET_DAC_CHANNEL_REG_CHAN_CNTRL_7_DAC_DDS_SEL(tx_pattern_map[pattern]));
-
+    #100 axi_write (TX1_CHANNEL + CH0 + GetAddrs(DAC_CHANNEL_REG_CHAN_CNTRL_7),
+                   `SET_DAC_CHANNEL_REG_CHAN_CNTRL_7_DAC_DDS_SEL(tx_pattern_map[pattern]));
+    #100 axi_write (TX1_CHANNEL + CH1 + GetAddrs(DAC_CHANNEL_REG_CHAN_CNTRL_7),
+                   `SET_DAC_CHANNEL_REG_CHAN_CNTRL_7_DAC_DDS_SEL(tx_pattern_map[pattern]));
+    #100 axi_write (TX1_CHANNEL + CH2 + GetAddrs(DAC_CHANNEL_REG_CHAN_CNTRL_7),
+                   `SET_DAC_CHANNEL_REG_CHAN_CNTRL_7_DAC_DDS_SEL(tx_pattern_map[pattern]));
+    #100 axi_write (TX1_CHANNEL + CH3 + GetAddrs(DAC_CHANNEL_REG_CHAN_CNTRL_7),
+                   `SET_DAC_CHANNEL_REG_CHAN_CNTRL_7_DAC_DDS_SEL(tx_pattern_map[pattern]));
     // enable test data check for RX1
-    axi_write (RX1_CHANNEL + CH0 + GetAddrs(ADC_CHANNEL_REG_CHAN_CNTRL_3),
-              `SET_ADC_CHANNEL_REG_CHAN_CNTRL_3_ADC_PN_SEL(rx_pattern_map[pattern]));
-    axi_write (RX1_CHANNEL + CH1 + GetAddrs(ADC_CHANNEL_REG_CHAN_CNTRL_3),
-              `SET_ADC_CHANNEL_REG_CHAN_CNTRL_3_ADC_PN_SEL(rx_pattern_map[pattern]));
-    axi_write (RX1_CHANNEL + CH2 + GetAddrs(ADC_CHANNEL_REG_CHAN_CNTRL_3),
-              `SET_ADC_CHANNEL_REG_CHAN_CNTRL_3_ADC_PN_SEL(rx_pattern_map[pattern]));
-    axi_write (RX1_CHANNEL + CH3 + GetAddrs(ADC_CHANNEL_REG_CHAN_CNTRL_3),
-              `SET_ADC_CHANNEL_REG_CHAN_CNTRL_3_ADC_PN_SEL(rx_pattern_map[pattern]));
-
+    #100 axi_write (RX1_CHANNEL + CH0 + GetAddrs(ADC_CHANNEL_REG_CHAN_CNTRL_3),
+                   `SET_ADC_CHANNEL_REG_CHAN_CNTRL_3_ADC_PN_SEL(rx_pattern_map[pattern]));
+    #100 axi_write (RX1_CHANNEL + CH1 + GetAddrs(ADC_CHANNEL_REG_CHAN_CNTRL_3),
+                   `SET_ADC_CHANNEL_REG_CHAN_CNTRL_3_ADC_PN_SEL(rx_pattern_map[pattern]));
+    #100 axi_write (RX1_CHANNEL + CH2 + GetAddrs(ADC_CHANNEL_REG_CHAN_CNTRL_3),
+                   `SET_ADC_CHANNEL_REG_CHAN_CNTRL_3_ADC_PN_SEL(rx_pattern_map[pattern]));
+    #100 axi_write (RX1_CHANNEL + CH3 + GetAddrs(ADC_CHANNEL_REG_CHAN_CNTRL_3),
+                   `SET_ADC_CHANNEL_REG_CHAN_CNTRL_3_ADC_PN_SEL(rx_pattern_map[pattern]));
     // Allow initial OOS to propagate
     #15000;
 
     // clear PN OOS and PN ERR
-    axi_write (RX1_CHANNEL + CH0 + GetAddrs(ADC_CHANNEL_REG_CHAN_STATUS),
-              `SET_ADC_CHANNEL_REG_CHAN_STATUS_PN_ERR(1) |
-              `SET_ADC_CHANNEL_REG_CHAN_STATUS_PN_OOS(1) |
-              `SET_ADC_CHANNEL_REG_CHAN_STATUS_OVER_RANGE(1));
-    axi_write (RX1_CHANNEL + CH1 + GetAddrs(ADC_CHANNEL_REG_CHAN_STATUS),
-              `SET_ADC_CHANNEL_REG_CHAN_STATUS_PN_ERR(1) |
-              `SET_ADC_CHANNEL_REG_CHAN_STATUS_PN_OOS(1) |
-              `SET_ADC_CHANNEL_REG_CHAN_STATUS_OVER_RANGE(1));
-    axi_write (RX1_CHANNEL + CH2 + GetAddrs(ADC_CHANNEL_REG_CHAN_STATUS),
-              `SET_ADC_CHANNEL_REG_CHAN_STATUS_PN_ERR(1) |
-              `SET_ADC_CHANNEL_REG_CHAN_STATUS_PN_OOS(1) |
-              `SET_ADC_CHANNEL_REG_CHAN_STATUS_OVER_RANGE(1));
-    axi_write (RX1_CHANNEL + CH3 + GetAddrs(ADC_CHANNEL_REG_CHAN_STATUS),
-              `SET_ADC_CHANNEL_REG_CHAN_STATUS_PN_ERR(1) |
-              `SET_ADC_CHANNEL_REG_CHAN_STATUS_PN_OOS(1) |
-              `SET_ADC_CHANNEL_REG_CHAN_STATUS_OVER_RANGE(1)); 
-    #10000;
-
+    #100 axi_write (RX1_CHANNEL + CH0 + GetAddrs(ADC_CHANNEL_REG_CHAN_STATUS),
+                   `SET_ADC_CHANNEL_REG_CHAN_STATUS_PN_ERR(1) |
+                   `SET_ADC_CHANNEL_REG_CHAN_STATUS_PN_OOS(1) |
+                   `SET_ADC_CHANNEL_REG_CHAN_STATUS_OVER_RANGE(1));
+    #100 axi_write (RX1_CHANNEL + CH1 + GetAddrs(ADC_CHANNEL_REG_CHAN_STATUS),
+                   `SET_ADC_CHANNEL_REG_CHAN_STATUS_PN_ERR(1) |
+                   `SET_ADC_CHANNEL_REG_CHAN_STATUS_PN_OOS(1) |
+                   `SET_ADC_CHANNEL_REG_CHAN_STATUS_OVER_RANGE(1));
+    #100 axi_write (RX1_CHANNEL + CH2 + GetAddrs(ADC_CHANNEL_REG_CHAN_STATUS),
+                   `SET_ADC_CHANNEL_REG_CHAN_STATUS_PN_ERR(1) |
+                   `SET_ADC_CHANNEL_REG_CHAN_STATUS_PN_OOS(1) |
+                   `SET_ADC_CHANNEL_REG_CHAN_STATUS_OVER_RANGE(1));
+    #100 axi_write (RX1_CHANNEL + CH3 + GetAddrs(ADC_CHANNEL_REG_CHAN_STATUS),
+                   `SET_ADC_CHANNEL_REG_CHAN_STATUS_PN_ERR(1) |
+                   `SET_ADC_CHANNEL_REG_CHAN_STATUS_PN_OOS(1) |
+                   `SET_ADC_CHANNEL_REG_CHAN_STATUS_OVER_RANGE(1));
     // check PN OOS and PN ERR flags
-    axi_read_v (RX1_COMMON + GetAddrs(ADC_COMMON_REG_STATUS),
-               `SET_ADC_COMMON_REG_STATUS_STATUS('h1));
+    #100 axi_read_v (RX1_COMMON + GetAddrs(ADC_COMMON_REG_STATUS),
+                     `SET_ADC_COMMON_REG_STATUS_STATUS('h1));
+ 
     link_down;
 
   end
   endtask
 
+  // --------------------------
+  // DDS test procedure
+  // --------------------------
+  task dds_test;
+  begin
 
+    //  -------------------------------------------------------
+    //  Test DDS path
+    //  -------------------------------------------------------
+
+    link_setup;
+
+    // Select DDS as source
+    #100 axi_write (TX1_CHANNEL + CH0 + GetAddrs(DAC_CHANNEL_REG_CHAN_CNTRL_7),
+                   `SET_DAC_CHANNEL_REG_CHAN_CNTRL_7_DAC_DDS_SEL(0));
+    #100 axi_write (TX1_CHANNEL + CH1 + GetAddrs(DAC_CHANNEL_REG_CHAN_CNTRL_7),
+                   `SET_DAC_CHANNEL_REG_CHAN_CNTRL_7_DAC_DDS_SEL(0));
+    #100 axi_write (TX1_CHANNEL + CH2 + GetAddrs(DAC_CHANNEL_REG_CHAN_CNTRL_7),
+                   `SET_DAC_CHANNEL_REG_CHAN_CNTRL_7_DAC_DDS_SEL(0));
+    #100 axi_write (TX1_CHANNEL + CH3 + GetAddrs(DAC_CHANNEL_REG_CHAN_CNTRL_7),
+                   `SET_DAC_CHANNEL_REG_CHAN_CNTRL_7_DAC_DDS_SEL(0));
+    // enable normal data path for RX1
+    #100 axi_write (RX1_CHANNEL + CH0 + GetAddrs(ADC_CHANNEL_REG_CHAN_CNTRL_3),
+                   `SET_ADC_CHANNEL_REG_CHAN_CNTRL_3_ADC_PN_SEL(0));
+    #100 axi_write (RX1_CHANNEL + CH1 + GetAddrs(ADC_CHANNEL_REG_CHAN_CNTRL_3),
+                   `SET_ADC_CHANNEL_REG_CHAN_CNTRL_3_ADC_PN_SEL(0));
+    #100 axi_write (RX1_CHANNEL + CH2 + GetAddrs(ADC_CHANNEL_REG_CHAN_CNTRL_3),
+                   `SET_ADC_CHANNEL_REG_CHAN_CNTRL_3_ADC_PN_SEL(0));
+    #100 axi_write (RX1_CHANNEL + CH3 + GetAddrs(ADC_CHANNEL_REG_CHAN_CNTRL_3),
+                   `SET_ADC_CHANNEL_REG_CHAN_CNTRL_3_ADC_PN_SEL(0));
+    // Configure tone amplitude and frequency
+    #100 axi_write (TX1_CHANNEL + CH0 + GetAddrs(DAC_CHANNEL_REG_CHAN_CNTRL_1),
+                   `SET_DAC_CHANNEL_REG_CHAN_CNTRL_1_DDS_SCALE_1(16'h0fff));
+    #100 axi_write (TX1_CHANNEL + CH1 + GetAddrs(DAC_CHANNEL_REG_CHAN_CNTRL_1),
+                   `SET_DAC_CHANNEL_REG_CHAN_CNTRL_1_DDS_SCALE_1(16'h07ff));
+    #100 axi_write (TX1_CHANNEL + CH2 + GetAddrs(DAC_CHANNEL_REG_CHAN_CNTRL_1),
+                   `SET_DAC_CHANNEL_REG_CHAN_CNTRL_1_DDS_SCALE_1(16'h03ff));
+    #100 axi_write (TX1_CHANNEL + CH3 + GetAddrs(DAC_CHANNEL_REG_CHAN_CNTRL_1),
+                   `SET_DAC_CHANNEL_REG_CHAN_CNTRL_1_DDS_SCALE_1(16'h01ff));
+    #100 axi_write (TX1_CHANNEL + CH0 + GetAddrs(DAC_CHANNEL_REG_CHAN_CNTRL_2),
+                   `SET_DAC_CHANNEL_REG_CHAN_CNTRL_2_DDS_INCR_1(16'h0100));
+    #100 axi_write (TX1_CHANNEL + CH1 + GetAddrs(DAC_CHANNEL_REG_CHAN_CNTRL_2),
+                   `SET_DAC_CHANNEL_REG_CHAN_CNTRL_2_DDS_INCR_1(16'h0200));
+    #100 axi_write (TX1_CHANNEL + CH2 + GetAddrs(DAC_CHANNEL_REG_CHAN_CNTRL_2),
+                   `SET_DAC_CHANNEL_REG_CHAN_CNTRL_2_DDS_INCR_1(16'h0400));
+    #100 axi_write (TX1_CHANNEL + CH3 + GetAddrs(DAC_CHANNEL_REG_CHAN_CNTRL_2),
+                   `SET_DAC_CHANNEL_REG_CHAN_CNTRL_2_DDS_INCR_1(16'h0800));
+    // Enable Rx channel, enable sign extension
+    #100 axi_write (RX1_CHANNEL + CH0 + GetAddrs(ADC_CHANNEL_REG_CHAN_CNTRL),
+                   `SET_ADC_CHANNEL_REG_CHAN_CNTRL_FORMAT_ENABLE(1) |
+                   `SET_ADC_CHANNEL_REG_CHAN_CNTRL_FORMAT_SIGNEXT(1));
+    #100 axi_write (RX1_CHANNEL + CH1 + GetAddrs(ADC_CHANNEL_REG_CHAN_CNTRL),
+                   `SET_ADC_CHANNEL_REG_CHAN_CNTRL_FORMAT_ENABLE(1) |
+                   `SET_ADC_CHANNEL_REG_CHAN_CNTRL_FORMAT_SIGNEXT(1));
+    #100 axi_write (RX1_CHANNEL + CH2 + GetAddrs(ADC_CHANNEL_REG_CHAN_CNTRL),
+                   `SET_ADC_CHANNEL_REG_CHAN_CNTRL_FORMAT_ENABLE(1) |
+                   `SET_ADC_CHANNEL_REG_CHAN_CNTRL_FORMAT_SIGNEXT(1));
+    #100 axi_write (RX1_CHANNEL + CH3 + GetAddrs(ADC_CHANNEL_REG_CHAN_CNTRL),
+                   `SET_ADC_CHANNEL_REG_CHAN_CNTRL_FORMAT_ENABLE(1) |
+                   `SET_ADC_CHANNEL_REG_CHAN_CNTRL_FORMAT_SIGNEXT(1));
+    // SYNC DAC channels
+    #100 axi_write (TX1_COMMON + GetAddrs(DAC_COMMON_REG_CNTRL_1),
+                   `SET_DAC_COMMON_REG_CNTRL_1_SYNC(1));
+    // SYNC ADC channels
+    #100 axi_write (RX1_COMMON + GetAddrs(ADC_COMMON_REG_CNTRL),
+                  `SET_ADC_COMMON_REG_CNTRL_SYNC(1)); 
+    #20000;
+
+    link_down;
+
+  end
+  endtask
+
+   // --------------------------
+  // DMA test procedure
+  // --------------------------
+  task dma_test;
+  begin
+
+    //  -------------------------------------------------------
+    //  Test DMA path
+    //  -------------------------------------------------------
+    // Init test data
+    for (int i=0;i<2048*2 ;i=i+2) begin
+      env.ddr_axi_agent.mem_model.backdoor_memory_write_4byte(`DDR_BASE+i*2,((i+1) << 16) | i ,15);
+    end
+    // Configure TX DMA
+    axi_write (`TX1_DMA+GetAddrs(dmac_CONTROL),
+               `SET_dmac_CONTROL_ENABLE(1));
+    axi_write (`TX1_DMA+GetAddrs(dmac_FLAGS),
+               `SET_dmac_FLAGS_CYCLIC(1));
+    axi_write (`TX1_DMA+GetAddrs(dmac_X_LENGTH),
+               `SET_dmac_X_LENGTH_X_LENGTH(32'h00000FFF));
+    axi_write (`TX1_DMA+GetAddrs(dmac_SRC_ADDRESS),
+               `SET_dmac_SRC_ADDRESS_SRC_ADDRESS(`DDR_BASE+32'h00000000));
+    axi_write (`TX1_DMA+GetAddrs(dmac_TRANSFER_SUBMIT),
+               `SET_dmac_TRANSFER_SUBMIT_TRANSFER_SUBMIT(1));     
+    // Select DDS as source
+    #100 axi_write (TX1_CHANNEL + CH0 + GetAddrs(DAC_CHANNEL_REG_CHAN_CNTRL_7),
+                   `SET_DAC_CHANNEL_REG_CHAN_CNTRL_7_DAC_DDS_SEL(2));
+    #100 axi_write (TX1_CHANNEL + CH1 + GetAddrs(DAC_CHANNEL_REG_CHAN_CNTRL_7),
+                   `SET_DAC_CHANNEL_REG_CHAN_CNTRL_7_DAC_DDS_SEL(2));
+    #100 axi_write (TX1_CHANNEL + CH2 + GetAddrs(DAC_CHANNEL_REG_CHAN_CNTRL_7),
+                   `SET_DAC_CHANNEL_REG_CHAN_CNTRL_7_DAC_DDS_SEL(2));
+    #100 axi_write (TX1_CHANNEL + CH3 + GetAddrs(DAC_CHANNEL_REG_CHAN_CNTRL_7),
+                   `SET_DAC_CHANNEL_REG_CHAN_CNTRL_7_DAC_DDS_SEL(2));    
+    // enable normal data path for RX1
+    #100 axi_write (RX1_CHANNEL + CH0 + GetAddrs(ADC_CHANNEL_REG_CHAN_CNTRL_3),
+                   `SET_ADC_CHANNEL_REG_CHAN_CNTRL_3_ADC_PN_SEL(0));
+    #100 axi_write (RX1_CHANNEL + CH1 + GetAddrs(ADC_CHANNEL_REG_CHAN_CNTRL_3),
+                   `SET_ADC_CHANNEL_REG_CHAN_CNTRL_3_ADC_PN_SEL(0));
+    #100 axi_write (RX1_CHANNEL + CH2 + GetAddrs(ADC_CHANNEL_REG_CHAN_CNTRL_3),
+                   `SET_ADC_CHANNEL_REG_CHAN_CNTRL_3_ADC_PN_SEL(0));
+    #100 axi_write (RX1_CHANNEL + CH3 + GetAddrs(ADC_CHANNEL_REG_CHAN_CNTRL_3),
+                   `SET_ADC_CHANNEL_REG_CHAN_CNTRL_3_ADC_PN_SEL(0));
+    // Enable Rx channel, enable sign extension
+    #100 axi_write (RX1_CHANNEL + CH0 + GetAddrs(ADC_CHANNEL_REG_CHAN_CNTRL),
+                   `SET_ADC_CHANNEL_REG_CHAN_CNTRL_ENABLE(1) |
+                   `SET_ADC_CHANNEL_REG_CHAN_CNTRL_FORMAT_ENABLE(1) |
+                   `SET_ADC_CHANNEL_REG_CHAN_CNTRL_FORMAT_SIGNEXT(1));
+    #100 axi_write (RX1_CHANNEL + CH1 + GetAddrs(ADC_CHANNEL_REG_CHAN_CNTRL),
+                   `SET_ADC_CHANNEL_REG_CHAN_CNTRL_ENABLE(1) |
+                   `SET_ADC_CHANNEL_REG_CHAN_CNTRL_FORMAT_ENABLE(1) |
+                   `SET_ADC_CHANNEL_REG_CHAN_CNTRL_FORMAT_SIGNEXT(1));
+    #100 axi_write (RX1_CHANNEL + CH2 + GetAddrs(ADC_CHANNEL_REG_CHAN_CNTRL),
+                   `SET_ADC_CHANNEL_REG_CHAN_CNTRL_ENABLE(1) |
+                   `SET_ADC_CHANNEL_REG_CHAN_CNTRL_FORMAT_ENABLE(1) |
+                   `SET_ADC_CHANNEL_REG_CHAN_CNTRL_FORMAT_SIGNEXT(1));
+    #100 axi_write (RX1_CHANNEL + CH3 + GetAddrs(ADC_CHANNEL_REG_CHAN_CNTRL),
+                   `SET_ADC_CHANNEL_REG_CHAN_CNTRL_ENABLE(1) |
+                   `SET_ADC_CHANNEL_REG_CHAN_CNTRL_FORMAT_ENABLE(1) |
+                   `SET_ADC_CHANNEL_REG_CHAN_CNTRL_FORMAT_SIGNEXT(1));
+    // SYNC DAC channels
+    #100 axi_write (TX1_COMMON + GetAddrs(DAC_COMMON_REG_CNTRL_1),
+                   `SET_DAC_COMMON_REG_CNTRL_1_SYNC(1));
+    // SYNC ADC channels
+    #100 axi_write (RX1_COMMON + GetAddrs(ADC_COMMON_REG_CNTRL),
+                   `SET_ADC_COMMON_REG_CNTRL_SYNC(1));
+ 
+    link_setup;
+    #20us;
+    // Configure RX DMA
+    axi_write (`RX1_DMA + GetAddrs(dmac_IRQ_MASK),
+	       32'h00000001); // Mask SOT IRQ, Enable EOT IRQ
+    axi_write (`RX1_DMA + GetAddrs(dmac_CONTROL),
+               `SET_dmac_CONTROL_ENABLE(1));
+    axi_write (`RX1_DMA + GetAddrs(dmac_FLAGS),
+               `SET_dmac_FLAGS_TLAST(1));
+    axi_write (`RX1_DMA + GetAddrs(dmac_X_LENGTH),
+               `SET_dmac_X_LENGTH_X_LENGTH(32'h000003FF));
+    axi_write (`RX1_DMA + GetAddrs(dmac_SRC_ADDRESS),
+               `SET_dmac_SRC_ADDRESS_SRC_ADDRESS(`DDR_BASE+32'h00002000));
+    axi_write (`RX1_DMA + GetAddrs(dmac_TRANSFER_SUBMIT),
+               `SET_dmac_TRANSFER_SUBMIT_TRANSFER_SUBMIT(1));
+    @(posedge system_tb.test_harness.axi_adrv9001_rx1_dma.irq);
+    //Clear interrupt
+    axi_write (`RX1_DMA + GetAddrs(dmac_IRQ_PENDING),
+	       32'h00000002);
+
+    check_captured_data(
+      .address (`DDR_BASE+'h00002000),
+      .length (1024),
+      .step (1),
+      .max_sample(2048)
+    );
+
+  end
+  endtask
+
+  // --------------------------
+  // DMA test procedure for Rx2/Tx2 independent pairs
+  // --------------------------
+  task dma_test_ch2;
+  begin
+
+    //  -------------------------------------------------------
+    //  Test DMA path
+    //  -------------------------------------------------------
+    // Init test data
+    for (int i=0;i<2048*2 ;i=i+2) begin
+      env.ddr_axi_agent.mem_model.backdoor_memory_write_4byte(`DDR_BASE+i*2,((i+1) << 16) | i ,15);
+    end
+    // Configure TX DMA
+    axi_write (`TX2_DMA+GetAddrs(dmac_CONTROL),
+               `SET_dmac_CONTROL_ENABLE(1));
+    axi_write (`TX2_DMA+GetAddrs(dmac_FLAGS),
+               `SET_dmac_FLAGS_CYCLIC(1));
+    axi_write (`TX2_DMA+GetAddrs(dmac_X_LENGTH),
+               `SET_dmac_X_LENGTH_X_LENGTH(32'h00000FFF));
+    axi_write (`TX2_DMA+GetAddrs(dmac_SRC_ADDRESS),
+               `SET_dmac_SRC_ADDRESS_SRC_ADDRESS(`DDR_BASE+32'h00000000));
+    axi_write (`TX2_DMA+GetAddrs(dmac_TRANSFER_SUBMIT),
+               `SET_dmac_TRANSFER_SUBMIT_TRANSFER_SUBMIT(1));    
+    // Select DDS as source
+    #100 axi_write (TX2_CHANNEL + CH0 + GetAddrs(DAC_CHANNEL_REG_CHAN_CNTRL_7),
+                   `SET_DAC_CHANNEL_REG_CHAN_CNTRL_7_DAC_DDS_SEL(0));
+    #100 axi_write (TX2_CHANNEL + CH1 + GetAddrs(DAC_CHANNEL_REG_CHAN_CNTRL_7),
+                   `SET_DAC_CHANNEL_REG_CHAN_CNTRL_7_DAC_DDS_SEL(0));    
+    // enable normal data path for RX1
+    #100 axi_write (RX1_CHANNEL + CH0 + GetAddrs(ADC_CHANNEL_REG_CHAN_CNTRL_3),
+                   `SET_ADC_CHANNEL_REG_CHAN_CNTRL_3_ADC_PN_SEL(0));
+    #100 axi_write (RX1_CHANNEL + CH1 + GetAddrs(ADC_CHANNEL_REG_CHAN_CNTRL_3),
+                   `SET_ADC_CHANNEL_REG_CHAN_CNTRL_3_ADC_PN_SEL(0));
+    // Enable Rx channel, enable sign extension
+    #100 axi_write (RX2_CHANNEL + CH0 + GetAddrs(ADC_CHANNEL_REG_CHAN_CNTRL),
+                   `SET_ADC_CHANNEL_REG_CHAN_CNTRL_ENABLE(1) |
+                   `SET_ADC_CHANNEL_REG_CHAN_CNTRL_FORMAT_ENABLE(1) |
+                   `SET_ADC_CHANNEL_REG_CHAN_CNTRL_FORMAT_SIGNEXT(1));
+    #100 axi_write (RX2_CHANNEL + CH0 + GetAddrs(ADC_CHANNEL_REG_CHAN_CNTRL),
+                   `SET_ADC_CHANNEL_REG_CHAN_CNTRL_ENABLE(1) |
+                   `SET_ADC_CHANNEL_REG_CHAN_CNTRL_FORMAT_ENABLE(1) |
+                   `SET_ADC_CHANNEL_REG_CHAN_CNTRL_FORMAT_SIGNEXT(1));    
+    // SYNC DAC channels
+    #100 axi_write (TX1_COMMON + GetAddrs(DAC_COMMON_REG_CNTRL_1),
+                   `SET_DAC_COMMON_REG_CNTRL_1_SYNC(1));
+    // SYNC ADC channels
+    #100 axi_write (RX1_COMMON + GetAddrs(ADC_COMMON_REG_CNTRL),
+                   `SET_ADC_COMMON_REG_CNTRL_SYNC(1));
+    link_setup(0,1,0,1);
+    #20us;
+    // Configure RX DMA
+    axi_write  (`RX1_DMA + GetAddrs(dmac_IRQ_MASK),
+	        32'h00000001); // Mask SOT IRQ, Enable EOT IRQ
+    axi_write (`RX2_DMA + GetAddrs(dmac_CONTROL),
+               `SET_dmac_CONTROL_ENABLE(1));
+    axi_write (`RX2_DMA + GetAddrs(dmac_FLAGS),
+               `SET_dmac_FLAGS_TLAST(1));
+    axi_write (`RX2_DMA + GetAddrs(dmac_X_LENGTH),
+               `SET_dmac_X_LENGTH_X_LENGTH(32'h000003FF));
+    axi_write (`RX2_DMA + GetAddrs(dmac_SRC_ADDRESS),
+               `SET_dmac_SRC_ADDRESS_SRC_ADDRESS(`DDR_BASE+32'h00002000));
+    axi_write (`RX2_DMA + GetAddrs(dmac_TRANSFER_SUBMIT),
+               `SET_dmac_TRANSFER_SUBMIT_TRANSFER_SUBMIT(1));    
+    @(posedge system_tb.test_harness.axi_adrv9001_rx2_dma.irq);
+    //Clear interrupt
+    axi_write (`RX1_DMA + GetAddrs(dmac_IRQ_PENDING),
+	       32'h00000002); 
+    check_captured_data(
+      .address (`DDR_BASE+'h00002000),
+      .length (1024),
+      .step (1),
+      .max_sample(2048)
+    );
+
+  end
+  endtask
   // Check captured data against incremental pattern based on first sample
   // Pattern should be contiguous
   task check_captured_data(bit [31:0] address,
@@ -362,217 +625,7 @@ program test_program;
     end
   endtask
 
-  // --------------------------
-  // DMA test procedure
-  // --------------------------
-  task dma_test;
-  begin
-    /*
-    //  -------------------------------------------------------
-    //  Test DDS path
-    //  -------------------------------------------------------
-
-    // Configure Transport Layer for DDS
-    //
-
-    
-    axi_write (`ADC_TPL + GetAddrs(ADC_CHANNEL_REG_CHAN_CNTRL),
-               `SET_ADC_CHANNEL_REG_CHAN_CNTRL_ENABLE(1));
-    axi_write (`DAC_TPL + GetAddrs(DAC_CHANNEL_REG_CHAN_CNTRL_7),
-               `SET_DAC_CHANNEL_REG_CHAN_CNTRL_7_DAC_DDS_SEL(0));
-    axi_write (`DAC_TPL + GetAddrs(DAC_CHANNEL_REG_CHAN_CNTRL_1),
-               `SET_DAC_CHANNEL_REG_CHAN_CNTRL_1_DDS_SCALE_1(16'h0fff));
-    axi_write (`DAC_TPL + GetAddrs(DAC_CHANNEL_REG_CHAN_CNTRL_1),
-               `SET_DAC_CHANNEL_REG_CHAN_CNTRL_2_DDS_INCR_1(16'h0100));
-
-    // Pull out TPL cores from reset
-    axi_write (`DAC_TPL + GetAddrs(DAC_COMMON_REG_RSTN),
-               `SET_DAC_COMMON_REG_RSTN_RSTN(1));
-    axi_write (`ADC_TPL +  GetAddrs(ADC_COMMON_REG_RSTN),
-               `SET_ADC_COMMON_REG_RSTN_RSTN(1));
-    // Sync DDS cores
-    axi_write (`DAC_TPL + GetAddrs(DAC_COMMON_REG_CNTRL_1),
-               `SET_DAC_COMMON_REG_CNTRL_1_SYNC(1));
-    //
-    // Configure TX Link Layer
-    //
-
-    //LINK DISABLE
-    axi_write (`AXI_JESD_TX + GetAddrs(JESD_TX_LINK_DISABLE),
-               `SET_JESD_TX_LINK_DISABLE_LINK_DISABLE(1));
-    //SYSREFCONF
-    axi_write (`AXI_JESD_TX + GetAddrs(JESD_TX_SYSREF_CONF),
-               `SET_JESD_TX_SYSREF_CONF_SYSREF_DISABLE(0));
-    //CONF0
-    axi_write (`AXI_JESD_TX+GetAddrs(JESD_TX_LINK_CONF0), 
-               `SET_JESD_TX_LINK_CONF0_OCTETS_PER_FRAME(`TX_JESD_F-1) | 
-               `SET_JESD_TX_LINK_CONF0_OCTETS_PER_MULTIFRAME(`TX_JESD_F*`TX_JESD_K-1));
-    axi_write (`AXI_JESD_TX+GetAddrs(JESD_TX_LINK_CONF4),
-               `SET_JESD_TX_LINK_CONF4_TPL_BEATS_PER_MULTIFRAME((`TX_JESD_F*`TX_JESD_K)/TX_OUT_BYTES-1));
-    //CONF1
-    axi_write (`AXI_JESD_TX + GetAddrs(JESD_TX_LINK_CONF1),
-               `SET_JESD_TX_LINK_CONF1_SCRAMBLER_DISABLE(0));
-    //LINK ENABLE
-    axi_write (`AXI_JESD_TX + GetAddrs(JESD_TX_LINK_DISABLE),
-               `SET_JESD_TX_LINK_DISABLE_LINK_DISABLE(0));
-    //
-    // Configure RX Link Layer
-    //
-
-    //LINK DISABLE
-    axi_write (`AXI_JESD_RX + GetAddrs(JESD_RX_LINK_DISABLE),
-               `SET_JESD_RX_LINK_DISABLE_LINK_DISABLE(1));
-    //SYSREFCONF
-    axi_write (`AXI_JESD_RX + GetAddrs(JESD_RX_SYSREF_CONF),
-               `SET_JESD_RX_SYSREF_CONF_SYSREF_DISABLE(0));
-    //CONF0
-    axi_write (`AXI_JESD_RX + GetAddrs(JESD_RX_LINK_CONF0),
-               `SET_JESD_RX_LINK_CONF0_OCTETS_PER_FRAME(`RX_JESD_F-1) | 
-               `SET_JESD_RX_LINK_CONF0_OCTETS_PER_MULTIFRAME(`RX_JESD_F*`RX_JESD_K-1));
-    axi_write(`AXI_JESD_RX + GetAddrs(JESD_RX_LINK_CONF4),
-              `SET_JESD_RX_LINK_CONF4_TPL_BEATS_PER_MULTIFRAME((`RX_JESD_F*`RX_JESD_K)/RX_OUT_BYTES-1));
-
-    //CONF1
-    axi_write (`AXI_JESD_RX + GetAddrs(JESD_RX_LINK_CONF1),
-               `SET_JESD_RX_LINK_CONF1_DESCRAMBLER_DISABLE(0));
-    //LINK ENABLE
-    axi_write (`AXI_JESD_RX + GetAddrs(JESD_RX_LINK_DISABLE),
-               `SET_JESD_RX_LINK_DISABLE_LINK_DISABLE(0));
-    //XCVR INIT
-    //REG CTRL
-    if (`JESD_MODE != "64B66B") begin
-        axi_write (`RX_XCVR+32'h0020,32'h00001004);   // RXOUTCLK uses DIV2
-        axi_write (`TX_XCVR+32'h0020,32'h00001004);
-
-        axi_write (`RX_XCVR+32'h0010,32'h00000001);
-        axi_write (`TX_XCVR+32'h0010,32'h00000001);
-    end
-
-    // Give time the PLLs to lock
-    #35us;
-
-    //Read status back
-    // Check SYSREF_STATUS
-    axi_read_v (`AXI_JESD_TX+GetAddrs(JESD_TX_SYSREF_STATUS),
-                `SET_JESD_TX_SYSREF_STATUS_SYSREF_DETECTED(1));
-    axi_read_v (`AXI_JESD_RX+GetAddrs(JESD_RX_SYSREF_STATUS),
-                `SET_JESD_RX_SYSREF_STATUS_SYSREF_DETECTED(1));
-    // Check if in DATA state and SYNC is 1
-    axi_read_v (`AXI_JESD_RX+GetAddrs(JESD_RX_LINK_STATUS),
-                `SET_JESD_RX_LINK_STATUS_STATUS_STATE(3));
-    axi_read_v (`AXI_JESD_TX+GetAddrs(JESD_TX_LINK_STATUS),
-                `SET_JESD_TX_LINK_STATUS_STATUS_STATE('h3) | 
-                `SET_JESD_TX_LINK_STATUS_STATUS_SYNC(ref_sync_status));
-
-    //LINK DISABLE
-    axi_write (`AXI_JESD_RX + GetAddrs(JESD_RX_LINK_DISABLE),
-               `SET_JESD_RX_LINK_DISABLE_LINK_DISABLE(1));
-    axi_write (`AXI_JESD_TX + GetAddrs(JESD_TX_LINK_DISABLE),
-               `SET_JESD_TX_LINK_DISABLE_LINK_DISABLE(1));
-
-    //  -------------------------------------------------------
-    //  Test DAC FIFO path and RX DMA capture
-    //  -------------------------------------------------------
-
-    // Init test data
-    // .step (1),
-    // .max_sample(2048)
-    for (int i=0;i<2048*2 ;i=i+2) begin
-      env.ddr_axi_agent.mem_model.backdoor_memory_write_4byte(`DDR_BASE+i*2,(((i+1)) << 16) | i ,15);
-    end
-
-    // Configure TX DMA
-    axi_write (`TX_DMA+GetAddrs(dmac_CONTROL),
-              `SET_dmac_CONTROL_ENABLE(1));
-    axi_write (`TX_DMA+GetAddrs(dmac_FLAGS),
-               `SET_dmac_FLAGS_TLAST(1));
-    axi_write (`TX_DMA+GetAddrs(dmac_X_LENGTH),
-               `SET_dmac_X_LENGTH_X_LENGTH(32'h00000FFF));
-    axi_write (`TX_DMA+GetAddrs(dmac_SRC_ADDRESS),
-               `SET_dmac_SRC_ADDRESS_SRC_ADDRESS(`DDR_BASE+32'h00000000));
-    axi_write (`TX_DMA+GetAddrs(dmac_TRANSFER_SUBMIT),
-               `SET_dmac_TRANSFER_SUBMIT_TRANSFER_SUBMIT(1));
-    #5us;
-
-    // Configure Transport Layer for DMA
-    axi_write (`DAC_TPL+'h40*i+GetAddrs(DAC_CHANNEL_REG_CHAN_CNTRL_7),
-               `SET_DAC_CHANNEL_REG_CHAN_CNTRL_7_DAC_DDS_SEL(2));  
-    #1us;
-
-    //LINK ENABLE
-    axi_write (`AXI_JESD_RX + GetAddrs(JESD_RX_LINK_DISABLE),
-               `SET_JESD_RX_LINK_DISABLE_LINK_DISABLE(0));
-    axi_write (`AXI_JESD_TX + GetAddrs(JESD_TX_LINK_DISABLE),
-               `SET_JESD_TX_LINK_DISABLE_LINK_DISABLE(0));
- 
-
-    #25us;
-
-    //Read status back
-    // Check SYSREF_STATUS
-    axi_read_v (`AXI_JESD_TX+GetAddrs(JESD_TX_SYSREF_STATUS),
-                `SET_JESD_TX_SYSREF_STATUS_SYSREF_DETECTED(1));
-    axi_read_v (`AXI_JESD_RX+GetAddrs(JESD_RX_SYSREF_STATUS),
-                `SET_JESD_RX_SYSREF_STATUS_SYSREF_DETECTED(1));
-
-    #1us;
-
-    // Check if in DATA state and SYNC is 1
-    axi_read_v (`AXI_JESD_TX+GetAddrs(JESD_TX_LINK_STATUS),
-                `SET_JESD_TX_LINK_STATUS_STATUS_STATE('h3));
-    axi_read_v (`AXI_JESD_TX+GetAddrs(JESD_TX_LINK_STATUS),
-                `SET_JESD_TX_LINK_STATUS_STATUS_STATE('h3) | 
-                `SET_JESD_TX_LINK_STATUS_STATUS_SYNC(ref_sync_status));
- 
-    // Configure RX DMA
-    axi_write (`RX_DMA+GetAddrs(dmac_CONTROL),
-               `SET_dmac_CONTROL_ENABLE(1));
-    axi_write (`RX_DMA+GetAddrs(dmac_FLAGS),
-               `SET_dmac_FLAGS_TLAST(1));
-    axi_write (`RX_DMA+GetAddrs(dmac_X_LENGTH),
-               `SET_dmac_X_LENGTH_X_LENGTH(32'h000003DF));
-    axi_write (`RX_DMA+GetAddrs(dmac_DEST_ADDRESS),
-               `SET_dmac_DEST_ADDRESS_DEST_ADDRESS(`DDR_BASE+32'h00001000));
-    axi_write (`RX_DMA+GetAddrs(dmac_TRANSFER_SUBMIT),
-               `SET_dmac_TRANSFER_SUBMIT_TRANSFER_SUBMIT(1));
-    #5us;
-    axi_write (`ADC_TPL+GetAddrs(ADC_CHANNEL_REG_CHAN_CNTRL),
-               `SET_ADC_CHANNEL_REG_CHAN_CNTRL_ENABLE(0));
-    #5us;
-
-    check_captured_data(
-      .address (`DDR_BASE+'h00001000),
-      .length (992),
-      .step (1),
-      .max_sample(2048)
-    );
-
-    axi_write (`ADC_TPL+GetAddrs(ADC_CHANNEL_REG_CHAN_CNTRL),
-               `SET_ADC_CHANNEL_REG_CHAN_CNTRL_ENABLE(1));
-    #5us;
-
-    // Configure RX DMA
-    axi_write(`RX_DMA+GetAddrs(dmac_CONTROL),
-              `SET_dmac_CONTROL_ENABLE(1));
-    axi_write (`RX_DMA+GetAddrs(dmac_FLAGS),
-               `SET_dmac_FLAGS_TLAST(1));
-    axi_write (`RX_DMA+GetAddrs(dmac_X_LENGTH),
-               `SET_dmac_X_LENGTH_X_LENGTH(32'h000003DF));
-    axi_write (`RX_DMA+GetAddrs(dmac_DEST_ADDRESS),
-               `SET_dmac_DEST_ADDRESS_DEST_ADDRESS(`DDR_BASE+32'h00002000));
-    axi_write (`RX_DMA+GetAddrs(dmac_TRANSFER_SUBMIT),
-               `SET_dmac_TRANSFER_SUBMIT_TRANSFER_SUBMIT(1));
-    #10us;
-
-    check_captured_data(
-      .address (`DDR_BASE+'h00002000),
-      .length (992),
-      .step (1),
-      .max_sample(2048)
-    );
-*/
-
-  end
-  endtask
-
 endprogram
+
+
+
