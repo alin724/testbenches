@@ -63,7 +63,7 @@ program test_program;
   parameter USE_RX_CLK_FOR_TX = 0;
   parameter DDS_DISABLE = 0;
   parameter IQCORRECTION_DISABLE = 1;
-
+  parameter SYMB_2_8_16B = 0;
   parameter BASE = `AXI_ADRV9001;
 
   parameter CH0 = 8'h00 * 4;
@@ -120,13 +120,19 @@ program test_program;
 
   integer rate;
   initial begin
-    case ({CMOS_LVDS_N[0],SINGLE_LANE[0],SDR_DDR_N[0]})
-      3'b000 : rate = 2;
-      3'b010 : rate = 4;
-      3'b111 : rate = 8;
-      3'b110 : rate = 4;
-      3'b100 : rate = 1;
-      3'b101 : rate = 2;
+    case ({CMOS_LVDS_N[0],SINGLE_LANE[0],SDR_DDR_N[0],SYMB_2_8_16B[1],SYMB_2_8_16B[0]})
+      5'b00000 : rate = 2;
+      5'b01000 : rate = 4;
+      5'b11100 : rate = 8;
+      5'b11000 : rate = 4;
+      5'b10000 : rate = 1;
+      5'b10100 : rate = 2;
+      5'b11101 : rate = 2;//SYMB 2b SDR
+      5'b11001 : rate = 1;//SYMB 2b DDR
+      5'b11110 : rate = 2;//SYMB 8b SDR
+      5'b11010 : rate = 1;//SYMB 8b DDR
+      5'b11111 : rate = 8;//SYMB 16b SDR
+      5'b11011 : rate = 4;//SYMB 16b DDR
       default : rate = 1;
     endcase
   end
@@ -224,8 +230,8 @@ program test_program;
     #100 axi_write (RX2_COMMON + 32'h00000044, (SDR_DDR_N << 16) | (SINGLE_LANE << 8) | (R1_MODE << 2));
 
     // Configure Tx interface
-    #100 axi_write (TX1_COMMON + 32'h00000048, (SDR_DDR_N << 16) | (SINGLE_LANE << 8) | (R1_MODE << 5));
-    #100 axi_write (TX2_COMMON + 32'h00000048, (SDR_DDR_N << 16) | (SINGLE_LANE << 8) | (R1_MODE << 5));
+    #100 axi_write (TX1_COMMON + 32'h00000048, (SDR_DDR_N << 16) | (SYMB_2_8_16B << 14) | (SINGLE_LANE << 8) | (R1_MODE << 5));
+    #100 axi_write (TX2_COMMON + 32'h00000048, (SDR_DDR_N << 16) | (SYMB_2_8_16B << 14) | (SINGLE_LANE << 8) | (R1_MODE << 5));
     #100 axi_write (TX1_COMMON + 32'h0000004c, rate-1);
     #100 axi_write (TX2_COMMON + 32'h0000004c, rate-1);
 
