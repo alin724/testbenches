@@ -70,6 +70,7 @@ program test_program;
   parameter USE_RX_CLK_FOR_TX = 0;
   parameter DDS_DISABLE = 0;
   parameter IQCORRECTION_DISABLE = 1;
+  parameter SYMB_2_8_16B = 0;
 
   parameter BASE = `AXI_ADRV9001;
 
@@ -127,13 +128,15 @@ program test_program;
 
   integer rate;
   initial begin
-    case ({CMOS_LVDS_N[0],SINGLE_LANE[0],SDR_DDR_N[0]})
-      3'b000 : rate = 2;
-      3'b010 : rate = 4;
-      3'b111 : rate = 8;
-      3'b110 : rate = 4;
-      3'b100 : rate = 1;
-      3'b101 : rate = 2;
+    case ({CMOS_LVDS_N[0],SINGLE_LANE[0],SDR_DDR_N[0],SYMB_2_8_16B[1],SYMB_2_8_16B[0]})
+      5'b00000 : rate = 2;
+      5'b01000 : rate = 4;
+      5'b11100 : rate = 8;
+      5'b11000 : rate = 4;
+      5'b10000 : rate = 1;
+      5'b10100 : rate = 2;
+      5'b11110 : rate = 4;
+      5'b11010 : rate = 2;//8b DDR
       default : rate = 1;
     endcase
   end
@@ -237,9 +240,9 @@ program test_program;
                    `SET_ADC_COMMON_REG_CNTRL_R1_MODE(R1_MODE) | (SDR_DDR_N << 16) | (SINGLE_LANE << 8));
     // Configure Tx interface
     #100 axi_write (TX1_COMMON + GetAddrs(DAC_COMMON_REG_CNTRL_2),
-                   `SET_DAC_COMMON_REG_CNTRL_2_R1_MODE(R1_MODE) | (SDR_DDR_N << 16) | (SINGLE_LANE << 8));
+                   `SET_DAC_COMMON_REG_CNTRL_2_R1_MODE(R1_MODE) | (SDR_DDR_N << 16) | (SYMB_2_8_16B << 14) | (SINGLE_LANE << 8));
     #100 axi_write (TX2_COMMON + GetAddrs(DAC_COMMON_REG_CNTRL_2),
-                   `SET_DAC_COMMON_REG_CNTRL_2_R1_MODE(R1_MODE) | (SDR_DDR_N << 16) | (SINGLE_LANE << 8));
+                   `SET_DAC_COMMON_REG_CNTRL_2_R1_MODE(R1_MODE) | (SDR_DDR_N << 16) | (SYMB_2_8_16B << 14) | (SINGLE_LANE << 8));
     #100 axi_write (TX1_COMMON + GetAddrs(DAC_COMMON_REG_RATECNTRL),
                    `SET_DAC_COMMON_REG_RATECNTRL_RATE(rate-1));
     #100 axi_write (TX2_COMMON + GetAddrs(DAC_COMMON_REG_RATECNTRL),
