@@ -20,7 +20,7 @@
 //   1. The GNU General Public License version 2 as published by the
 //      Free Software Foundation, which can be found in the top level directory
 //      of this repository (LICENSE_GPL2), and also online at:
-//      <https://www.gnu.org/licenses/old_licenses/gpl-2.0.html>
+//      <https://www.gnu.org/licenses/old-licenses/gpl-2.0.html>
 //
 // OR
 //
@@ -33,7 +33,7 @@
 // ***************************************************************************
 // ***************************************************************************
 /* Auto generated Register Map */
-/* Fri May 28 12:27:32 2021 */
+/* Wed Jul 28 08:52:47 2021 */
 
 package adi_regmap_dac_pkg;
   import adi_regmap_pkg::*;
@@ -58,11 +58,23 @@ package adi_regmap_dac_pkg;
   `define GET_DAC_COMMON_REG_CNTRL_1_SYNC(x) GetField(DAC_COMMON_REG_CNTRL_1,"SYNC",x)
 
   const reg_t DAC_COMMON_REG_CNTRL_2 = '{ 'h0048, "REG_CNTRL_2" , '{
+    "SDR_DDR_N": '{ 16, 16, RW, 'h0 },
+    "SYMB_OP": '{ 15, 15, RW, 'h0 },
+    "SYMB_8_16B": '{ 14, 14, RW, 'h0 },
+    "NUM_LANES": '{ 12, 8, RW, 'h0 },
     "PAR_TYPE": '{ 7, 7, RW, 'h0 },
     "PAR_ENB": '{ 6, 6, RW, 'h0 },
     "R1_MODE": '{ 5, 5, RW, 'h0 },
     "DATA_FORMAT": '{ 4, 4, RW, 'h0 },
     "RESERVED": '{ 3, 0, NA, 'h00 }}};
+  `define SET_DAC_COMMON_REG_CNTRL_2_SDR_DDR_N(x) SetField(DAC_COMMON_REG_CNTRL_2,"SDR_DDR_N",x)
+  `define GET_DAC_COMMON_REG_CNTRL_2_SDR_DDR_N(x) GetField(DAC_COMMON_REG_CNTRL_2,"SDR_DDR_N",x)
+  `define SET_DAC_COMMON_REG_CNTRL_2_SYMB_OP(x) SetField(DAC_COMMON_REG_CNTRL_2,"SYMB_OP",x)
+  `define GET_DAC_COMMON_REG_CNTRL_2_SYMB_OP(x) GetField(DAC_COMMON_REG_CNTRL_2,"SYMB_OP",x)
+  `define SET_DAC_COMMON_REG_CNTRL_2_SYMB_8_16B(x) SetField(DAC_COMMON_REG_CNTRL_2,"SYMB_8_16B",x)
+  `define GET_DAC_COMMON_REG_CNTRL_2_SYMB_8_16B(x) GetField(DAC_COMMON_REG_CNTRL_2,"SYMB_8_16B",x)
+  `define SET_DAC_COMMON_REG_CNTRL_2_NUM_LANES(x) SetField(DAC_COMMON_REG_CNTRL_2,"NUM_LANES",x)
+  `define GET_DAC_COMMON_REG_CNTRL_2_NUM_LANES(x) GetField(DAC_COMMON_REG_CNTRL_2,"NUM_LANES",x)
   `define SET_DAC_COMMON_REG_CNTRL_2_PAR_TYPE(x) SetField(DAC_COMMON_REG_CNTRL_2,"PAR_TYPE",x)
   `define GET_DAC_COMMON_REG_CNTRL_2_PAR_TYPE(x) GetField(DAC_COMMON_REG_CNTRL_2,"PAR_TYPE",x)
   `define SET_DAC_COMMON_REG_CNTRL_2_PAR_ENB(x) SetField(DAC_COMMON_REG_CNTRL_2,"PAR_ENB",x)

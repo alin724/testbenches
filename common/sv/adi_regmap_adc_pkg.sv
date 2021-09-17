@@ -20,7 +20,7 @@
 //   1. The GNU General Public License version 2 as published by the
 //      Free Software Foundation, which can be found in the top level directory
 //      of this repository (LICENSE_GPL2), and also online at:
-//      <https://www.gnu.org/licenses/old_licenses/gpl-2.0.html>
+//      <https://www.gnu.org/licenses/old-licenses/gpl-2.0.html>
 //
 // OR
 //
@@ -33,7 +33,7 @@
 // ***************************************************************************
 // ***************************************************************************
 /* Auto generated Register Map */
-/* Fri May 28 12:27:32 2021 */
+/* Wed Jul 28 08:52:47 2021 */
 
 package adi_regmap_adc_pkg;
   import adi_regmap_pkg::*;
@@ -53,10 +53,22 @@ package adi_regmap_adc_pkg;
   `define GET_ADC_COMMON_REG_RSTN_RSTN(x) GetField(ADC_COMMON_REG_RSTN,"RSTN",x)
 
   const reg_t ADC_COMMON_REG_CNTRL = '{ 'h0044, "REG_CNTRL" , '{
+    "SDR_DDR_N": '{ 16, 16, RW, 'h0 },
+    "SYMB_OP": '{ 15, 15, RW, 'h0 },
+    "SYMB_8_16B": '{ 14, 14, RW, 'h0 },
+    "NUM_LANES": '{ 12, 8, RW, 'h0 },
     "SYNC": '{ 3, 3, RW, 'h0 },
     "R1_MODE": '{ 2, 2, RW, 'h0 },
     "DDR_EDGESEL": '{ 1, 1, RW, 'h0 },
     "PIN_MODE": '{ 0, 0, RW, 'h0 }}};
+  `define SET_ADC_COMMON_REG_CNTRL_SDR_DDR_N(x) SetField(ADC_COMMON_REG_CNTRL,"SDR_DDR_N",x)
+  `define GET_ADC_COMMON_REG_CNTRL_SDR_DDR_N(x) GetField(ADC_COMMON_REG_CNTRL,"SDR_DDR_N",x)
+  `define SET_ADC_COMMON_REG_CNTRL_SYMB_OP(x) SetField(ADC_COMMON_REG_CNTRL,"SYMB_OP",x)
+  `define GET_ADC_COMMON_REG_CNTRL_SYMB_OP(x) GetField(ADC_COMMON_REG_CNTRL,"SYMB_OP",x)
+  `define SET_ADC_COMMON_REG_CNTRL_SYMB_8_16B(x) SetField(ADC_COMMON_REG_CNTRL,"SYMB_8_16B",x)
+  `define GET_ADC_COMMON_REG_CNTRL_SYMB_8_16B(x) GetField(ADC_COMMON_REG_CNTRL,"SYMB_8_16B",x)
+  `define SET_ADC_COMMON_REG_CNTRL_NUM_LANES(x) SetField(ADC_COMMON_REG_CNTRL,"NUM_LANES",x)
+  `define GET_ADC_COMMON_REG_CNTRL_NUM_LANES(x) GetField(ADC_COMMON_REG_CNTRL,"NUM_LANES",x)
   `define SET_ADC_COMMON_REG_CNTRL_SYNC(x) SetField(ADC_COMMON_REG_CNTRL,"SYNC",x)
   `define GET_ADC_COMMON_REG_CNTRL_SYNC(x) GetField(ADC_COMMON_REG_CNTRL,"SYNC",x)
   `define SET_ADC_COMMON_REG_CNTRL_R1_MODE(x) SetField(ADC_COMMON_REG_CNTRL,"R1_MODE",x)
